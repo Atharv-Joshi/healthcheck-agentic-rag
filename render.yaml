@@ -1,0 +1,15 @@
+# Render Blueprint: one Docker web service + a free Postgres. Set DEEPSEEK_API_KEY in the dashboard.
+services:
+  - type: web
+    name: healthcheck-qa
+    runtime: docker
+    plan: starter   # the free tier's 512MB RAM is too small for torch + sentence-transformers
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase: { name: healthcheck-db, property: connectionString }
+      - key: DEEPSEEK_API_KEY
+        sync: false
+databases:
+  - name: healthcheck-db
+    plan: free
