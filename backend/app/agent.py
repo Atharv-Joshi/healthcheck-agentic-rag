@@ -9,7 +9,7 @@ from app.tools.registry import TOOL_SCHEMAS, call_tool
 
 load_dotenv()
 
-MODEL = "deepseek-chat"  # not deepseek-reasoner: it doesn't support tool calling cleanly
+MODEL = os.getenv("LLM_MODEL", "deepseek-chat")  # not deepseek-reasoner: no clean tool calling
 MAX_STEPS = 6
 
 SYSTEM_PROMPT = """You answer questions about a Contentstack Healthcheck audit report.
