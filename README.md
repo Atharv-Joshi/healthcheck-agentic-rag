@@ -21,6 +21,9 @@ One agent, two retrieval paths, and the LLM decides which to use (or both):
 - **Agent loop:** a hand-written tool-calling loop (`backend/app/agent.py`) against DeepSeek's OpenAI-compatible API
   (`deepseek-chat`; the reasoner model doesn't do tool calling cleanly). Tool errors are returned to the model
   as data so it can recover (e.g. ambiguous stack name → it gets the candidate list).
+- **Retrieval quality:** chunks are split on Markdown headings and prefixed with their heading path; results below a
+  cosine-similarity threshold (0.30, chosen from measured on-topic ≥0.43 vs off-topic ≤0.18 scores) are dropped, so
+  the model is told when nothing relevant exists instead of being handed noise.
 - **RAG corpus:** ~37 public Contentstack docs pages (official Markdown export) + the check descriptions and
   recommendations, chunked (~1000 chars, overlap) and embedded locally with `all-MiniLM-L6-v2`.
 - The UI shows which tools answered each question (blue = SQL, violet = docs).
@@ -38,23 +41,34 @@ One agent, two retrieval paths, and the LLM decides which to use (or both):
 python3.11 -m venv venv && ./venv/bin/pip install -r backend/requirements.txt
 cp .env.example .env            # add DEEPSEEK_API_KEY
 cd backend
-../venv/bin/python -m scripts.seed          # mock data -> Postgres (idempotent, seeded RNG)
+../venv/bin/alembic upgrade head            # create the schema
+../venv/bin/python -m scripts.seed          # mock data (seeded RNG; --force to replace existing data)
 ../venv/bin/python -m scripts.ingest_docs   # docs + checks -> Chroma
 ../venv/bin/uvicorn app.main:app --reload
 # other terminal: cd frontend && npm install && npm run dev   (proxies /api to :8000)
 ```
 
 Or with Docker: `DEEPSEEK_API_KEY=... docker compose up --build` → http://localhost:8000
-(seeds the DB and builds the index on first boot).
+(runs migrations, seeds the DB and builds the index on first boot; runs as a non-root user).
+
+## Tests
+
+```bash
+cd backend && ../venv/bin/python -m pytest
+```
+Runs against a separate `healthcheck_qa_test` database (created and seeded automatically) with a stubbed LLM,
+so it is free and offline. CI runs it on every push, plus the frontend build.
 
 ## Layout
 
 ```
 backend/app/db/      SQLAlchemy models
 backend/app/tools/   SQL tools + schemas/dispatch (registry.py)
-backend/app/rag/     Chroma store + embeddings
+backend/app/rag/     Chroma store + heading-aware chunking
+backend/app/config.py typed settings (pydantic-settings)
 backend/app/agent.py the tool-calling loop
-backend/scripts/     mock catalog, seed, docs ingestion
+backend/alembic/     schema migrations (initial schema + CHECK constraints)
+backend/scripts/     mock catalog, seed, docs ingestion, routing eval
 frontend/            React + Tailwind chat UI
 ```
 
@@ -62,5 +76,6 @@ frontend/            React + Tailwind chat UI
 
 - Single-shot Q&A: no conversation memory yet.
 - Failed entities are stored as a sample (max 25 per check); `entity_count` holds the true total.
-- No automated eval set for routing quality yet.
+- Routing eval (`scripts/eval_routing.py`) exists but hasn't been run against a live model yet.
+- Tool results are plain dicts, not typed models.
 - Neither agent has been compared on live-model routing results yet (waiting on LLM credit).

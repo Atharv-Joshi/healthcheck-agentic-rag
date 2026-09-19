@@ -1,4 +1,4 @@
-"""LangChain version of the agent (same tools, prompt and return shape as agent.py).
+"""LangChain version of the agent (same tools, prompt, limits and return shape as agent.py).
 
 What the framework replaces from the raw loop in agent.py:
   - the while-loop + message bookkeeping        -> create_agent (a LangGraph state graph)
@@ -7,7 +7,7 @@ What the framework replaces from the raw loop in agent.py:
   - the OpenAI client                           -> ChatOpenAI
 """
 import json
-import os
+import logging
 
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, HumanMessage
@@ -16,8 +16,14 @@ from langchain_openai import ChatOpenAI
 from langgraph.errors import GraphRecursionError
 from sqlalchemy.orm import Session
 
-from app.agent import MAX_STEPS, MODEL, SYSTEM_PROMPT
+from app.agent import MAX_STEPS
+from app.config import get_settings
+from app.prompts import SYSTEM_PROMPT
 from app.tools.registry import TOOL_SCHEMAS, call_tool
+
+log = logging.getLogger(__name__)
+
+FALLBACK_ANSWER = "I couldn't produce an answer. Please try rephrasing."
 
 
 def build_tools(db: Session) -> list[StructuredTool]:
@@ -35,8 +41,18 @@ def build_tools(db: Session) -> list[StructuredTool]:
 
 
 def get_model() -> ChatOpenAI:
-    return ChatOpenAI(model=MODEL, api_key=os.environ["DEEPSEEK_API_KEY"],
-                      base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
+    cfg = get_settings()
+    if not cfg.deepseek_api_key:
+        raise ValueError("DEEPSEEK_API_KEY is not set")
+    return ChatOpenAI(model=cfg.llm_model, api_key=cfg.deepseek_api_key, base_url=cfg.deepseek_base_url,
+                      timeout=cfg.llm_timeout_s, max_retries=1, max_tokens=cfg.llm_max_output_tokens)
+
+
+def _text(content) -> str:
+    """Message content may be a string or a list of content blocks; return the plain text either way."""
+    if isinstance(content, str):
+        return content
+    return "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content or [])
 
 
 def ask(db: Session, question: str, model=None) -> dict:
@@ -46,9 +62,10 @@ def ask(db: Session, question: str, model=None) -> dict:
     try:
         state = agent.invoke({"messages": [HumanMessage(question)]}, config)
     except GraphRecursionError:
+        log.warning("step limit reached for question=%r", question)
         return {"answer": "I couldn't finish answering within the tool-call limit.", "tool_calls": []}
 
     messages = state["messages"]
     trace = [{"name": c["name"], "arguments": json.dumps(c["args"])}
              for m in messages if isinstance(m, AIMessage) for c in m.tool_calls]
-    return {"answer": messages[-1].content, "tool_calls": trace}
+    return {"answer": _text(messages[-1].content).strip() or FALLBACK_ANSWER, "tool_calls": trace}

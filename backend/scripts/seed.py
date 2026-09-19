@@ -1,19 +1,33 @@
-"""Load reproducible mock Healthcheck data into Postgres. Usage: python -m scripts.seed"""
+"""Load reproducible mock Healthcheck data into Postgres. The schema comes from Alembic (alembic upgrade head).
+Usage: python -m scripts.seed [--force | --if-empty]
+  --force     replace existing data (required if the DB already has stacks)
+  --if-empty  seed only when empty, otherwise do nothing (used by the container entrypoint)"""
 import random
+import sys
 from datetime import date, timedelta
 
+from sqlalchemy import func, select, text
+
 from app.db import models
-from app.db.database import Base, SessionLocal, engine
+from app.db.database import SessionLocal, engine
 
 from .catalog import CHECKS, ENTITY_WORDS, STACKS
 
 MAX_SAMPLE_ENTITIES = 25  # entity_count is the true total; failed_entities holds a sample
 
 
-def main() -> None:
+def main(force: bool = False, if_empty: bool = False) -> None:
     rng = random.Random(42)
-    Base.metadata.drop_all(engine)
-    Base.metadata.create_all(engine)
+    with SessionLocal() as db:
+        existing = db.scalar(select(func.count()).select_from(models.Stack))
+    if existing and if_empty:
+        print(f"Database already seeded ({existing} stacks); skipping.")
+        return
+    if existing and not force:
+        raise SystemExit(f"Refusing to seed: database already has {existing} stacks. "
+                         f"Re-run with --force to wipe and replace the mock data.")
+    with engine.begin() as conn:  # data only; never touches the schema
+        conn.execute(text("TRUNCATE failed_entities, check_results, checks, stacks RESTART IDENTITY CASCADE"))
 
     with SessionLocal() as db:
         checks = []
@@ -60,4 +74,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    main(force="--force" in sys.argv, if_empty="--if-empty" in sys.argv)
