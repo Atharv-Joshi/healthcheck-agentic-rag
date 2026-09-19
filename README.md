@@ -40,6 +40,14 @@ cd backend
 Or with Docker: `DEEPSEEK_API_KEY=... docker compose up --build` → http://localhost:8000
 (seeds the DB and builds the index on first boot).
 
+## Tests
+
+```bash
+cd backend && ../venv/bin/python -m pytest
+```
+Runs against a separate `healthcheck_qa_test` database (created and seeded automatically) with a stubbed LLM,
+so it is free and offline. CI runs it on every push, plus the frontend build.
+
 ## Layout
 
 ```

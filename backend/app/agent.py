@@ -11,6 +11,8 @@ load_dotenv()
 
 MODEL = os.getenv("LLM_MODEL", "deepseek-chat")  # not deepseek-reasoner: no clean tool calling
 MAX_STEPS = 6
+REQUEST_TIMEOUT_S = 30
+MAX_OUTPUT_TOKENS = 800
 
 SYSTEM_PROMPT = """You answer questions about a Contentstack Healthcheck audit report.
 All report data in this system is synthetic mock data.
@@ -31,7 +33,8 @@ numbers you retrieved."""
 
 def get_client() -> OpenAI:
     return OpenAI(api_key=os.environ["DEEPSEEK_API_KEY"],
-                  base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"))
+                  base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+                  timeout=REQUEST_TIMEOUT_S, max_retries=1)
 
 
 def ask(db: Session, question: str, client: OpenAI | None = None) -> dict:
@@ -40,10 +43,11 @@ def ask(db: Session, question: str, client: OpenAI | None = None) -> dict:
     trace = []
 
     for _ in range(MAX_STEPS):
-        resp = client.chat.completions.create(model=MODEL, messages=messages, tools=TOOL_SCHEMAS)
+        resp = client.chat.completions.create(model=MODEL, messages=messages, tools=TOOL_SCHEMAS,
+                                             max_tokens=MAX_OUTPUT_TOKENS)
         msg = resp.choices[0].message
         if not msg.tool_calls:
-            return {"answer": msg.content, "tool_calls": trace}
+            return {"answer": msg.content or "I couldn't produce an answer. Please try rephrasing.", "tool_calls": trace}
 
         messages.append(msg.model_dump(exclude_none=True))
         for tc in msg.tool_calls:

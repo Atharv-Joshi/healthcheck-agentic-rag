@@ -1,16 +1,26 @@
+import logging
 import os
 from pathlib import Path
 
 import openai
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
 from app.agent import ask
 from app.db.database import SessionLocal
 
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s")
+
 app = FastAPI(title="Healthcheck Q&A")
+# Every /ask costs LLM money. Behind a reverse proxy run uvicorn with --proxy-headers so this sees the client IP.
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 def get_db():
@@ -33,7 +43,8 @@ def health():
 
 
 @app.post("/ask", response_model=AskResponse)
-def ask_endpoint(req: AskRequest, db: Session = Depends(get_db)):
+@limiter.limit(os.getenv("RATE_LIMIT", "10/minute"))
+def ask_endpoint(request: Request, req: AskRequest, db: Session = Depends(get_db)):
     try:
         return ask(db, req.question)
     except openai.APIStatusError as e:
