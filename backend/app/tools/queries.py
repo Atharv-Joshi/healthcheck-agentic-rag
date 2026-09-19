@@ -7,6 +7,12 @@ from app.db.models import Check, CheckResult, FailedEntity, Stack
 MAX_LIMIT = 50
 
 
+def _like(term: str) -> str:
+    """Contains-pattern with LIKE wildcards in the user/LLM text escaped (use with escape="\\")."""
+    escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
 def _clamp_limit(limit: int | None, default: int = 10) -> int:
     return max(1, min(limit if limit is not None else default, MAX_LIMIT))
 
@@ -16,7 +22,7 @@ class EntityNotFound(Exception):
 
 
 def _resolve_stack(db: Session, name: str) -> Stack:
-    matches = db.scalars(select(Stack).where(Stack.name.ilike(f"%{name}%"))).all()
+    matches = db.scalars(select(Stack).where(Stack.name.ilike(_like(name), escape="\\"))).all()
     if len(matches) == 1:
         return matches[0]
     if not matches:
@@ -26,7 +32,7 @@ def _resolve_stack(db: Session, name: str) -> Stack:
 
 
 def _resolve_check(db: Session, name: str) -> Check:
-    matches = db.scalars(select(Check).where(Check.name.ilike(f"%{name}%"))).all()
+    matches = db.scalars(select(Check).where(Check.name.ilike(_like(name), escape="\\"))).all()
     exact = [c for c in matches if c.name.lower() == name.lower()]
     if len(exact) == 1:
         return exact[0]
@@ -47,7 +53,7 @@ def list_stacks(db: Session) -> dict:
 def list_checks(db: Session, category: str | None = None) -> dict:
     q = select(Check).order_by(Check.category, Check.name)
     if category:
-        q = q.where(Check.category.ilike(f"%{category}%"))
+        q = q.where(Check.category.ilike(_like(category), escape="\\"))
     return {"checks": [{"name": c.name, "category": c.category} for c in db.scalars(q)]}
 
 
@@ -89,9 +95,9 @@ def list_checks_by_status(db: Session, stack_name: str, status: str | None = Non
     if status:
         q = q.where(CheckResult.status == status.lower())
     if bucket:
-        q = q.where(CheckResult.bucket.ilike(f"%{bucket}%"))
+        q = q.where(CheckResult.bucket.ilike(_like(bucket), escape="\\"))
     if category:
-        q = q.where(Check.category.ilike(f"%{category}%"))
+        q = q.where(Check.category.ilike(_like(category), escape="\\"))
     rows = db.execute(q).all()
     limit = _clamp_limit(limit)
     return {"stack": stack.name, "total_matching": len(rows), "returned": min(len(rows), limit),

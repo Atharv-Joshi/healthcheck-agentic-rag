@@ -1,5 +1,6 @@
 """Tests run against a separate, freshly seeded Postgres database (never the dev data)."""
 import os
+from pathlib import Path
 
 import psycopg2
 import pytest
@@ -26,9 +27,20 @@ def _ensure_test_db() -> None:
 
 @pytest.fixture(scope="session", autouse=True)
 def seeded_db():
+    """Build the schema from the real Alembic migrations (so they're tested too), then seed."""
     _ensure_test_db()
+    from alembic import command
+    from alembic.config import Config
+    from sqlalchemy import text
+
+    from app.db.database import engine
     from scripts import seed
-    seed.main()
+
+    assert engine.url.database == TEST_DB, "refusing to reset a non-test database"
+    with engine.begin() as conn:
+        conn.execute(text("DROP SCHEMA public CASCADE; CREATE SCHEMA public"))
+    command.upgrade(Config(str(Path(__file__).resolve().parents[1] / "alembic.ini")), "head")
+    seed.main(force=True)
 
 
 @pytest.fixture()

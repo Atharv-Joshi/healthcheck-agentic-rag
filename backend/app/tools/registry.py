@@ -5,6 +5,7 @@ import time
 
 from sqlalchemy.orm import Session
 
+from app.db.models import BUCKETS, CATEGORIES, STATUSES
 from app.rag import store
 
 from . import queries
@@ -31,8 +32,8 @@ TOOL_SCHEMAS = [
         ["stack_name", "check_name"]),
     _fn("list_checks_by_status", "Filter a stack's check results by status, bucket, and/or category, sorted by most affected entities. Use for counts and lists.",
         {"stack_name": _STACK,
-         "status": {"type": "string", "enum": ["passed", "failed", "skipped"]},
-         "bucket": {"type": "string", "enum": ["Actions Required", "Areas of Opportunity", "Strengths"]},
+         "status": {"type": "string", "enum": list(STATUSES)},
+         "bucket": {"type": "string", "enum": list(BUCKETS)},
          "category": {"type": "string"},
          "limit": {"type": "integer", "description": "Max rows (default 10, max 50)."}}, ["stack_name"]),
     _fn("list_actions_required", "Top high-priority 'Actions Required' items for a stack, most affected first.",
@@ -43,12 +44,15 @@ TOOL_SCHEMAS = [
     _fn("search_docs", "Semantic search over Contentstack documentation and check explanations. Use for conceptual questions: "
         "why something matters, how to fix it, what a feature is, best practices. NOT for counts, statuses or lists from the report.",
         {"query": {"type": "string", "description": "Self-contained search query, rephrased with the key concept names."},
-         "category": {"type": "string", "enum": ["Security", "Content Modeling", "Content", "Other Configurations"],
+         "category": {"type": "string", "enum": list(CATEGORIES),
                       "description": "Optional filter."}}, ["query"]),
 ]
 
 def _search_docs(_db: Session, query: str, category: str | None = None) -> dict:
-    return {"passages": store.search(query, k=4, category=category)}
+    passages = store.search(query, k=4, category=category)
+    if not passages:
+        return {"passages": [], "note": "No sufficiently relevant documentation found. Say so; do not improvise."}
+    return {"passages": passages}
 
 
 _DISPATCH = {

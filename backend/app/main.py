@@ -1,6 +1,5 @@
 import logging
-import os
-from pathlib import Path
+from contextlib import asynccontextmanager
 
 import openai
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -12,11 +11,26 @@ from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
 from app.agent import ask
+from app.config import get_settings
 from app.db.database import SessionLocal
+from app.rag import store
 
-logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s")
+settings = get_settings()
+logging.basicConfig(level=settings.log_level, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
-app = FastAPI(title="Healthcheck Q&A")
+log = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    try:
+        store.warm_up()  # first user shouldn't pay for loading the embedding model
+    except Exception:
+        log.exception("vector store warm-up failed; docs search will retry lazily")
+    yield
+
+
+app = FastAPI(title="Healthcheck Q&A", lifespan=lifespan)
 # Every /ask costs LLM money. Behind a reverse proxy run uvicorn with --proxy-headers so this sees the client IP.
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
@@ -43,7 +57,7 @@ def health():
 
 
 @app.post("/ask", response_model=AskResponse)
-@limiter.limit(os.getenv("RATE_LIMIT", "10/minute"))
+@limiter.limit(settings.rate_limit)
 def ask_endpoint(request: Request, req: AskRequest, db: Session = Depends(get_db)):
     try:
         return ask(db, req.question)
@@ -54,6 +68,5 @@ def ask_endpoint(request: Request, req: AskRequest, db: Session = Depends(get_db
 
 
 # In the container the built React app is served by FastAPI itself (same origin, no CORS).
-_dist = Path(os.getenv("FRONTEND_DIST", "/app/frontend_dist"))
-if _dist.is_dir():
-    app.mount("/", StaticFiles(directory=_dist, html=True), name="frontend")
+if settings.frontend_dist.is_dir():
+    app.mount("/", StaticFiles(directory=settings.frontend_dist, html=True), name="frontend")

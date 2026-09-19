@@ -12,6 +12,9 @@ from sqlalchemy import select
 
 from app.db.database import SessionLocal
 from app.db.models import Check
+from app.config import get_settings
+from app.rag import store
+from app.rag.chunking import chunk_markdown
 from app.rag.store import COLLECTION, get_collection
 
 BASE = "https://www.contentstack.com/docs/"
@@ -56,7 +59,6 @@ PAGES = {
     "headless-cms/about-releases": "Other Configurations",
     "developer-hub/app-development-best-practices": "Other Configurations",
 }
-CHUNK_CHARS, OVERLAP = 1000, 150
 
 
 def fetch(path: str, refresh: bool) -> dict | None:
@@ -82,25 +84,12 @@ def fetch(path: str, refresh: bool) -> dict | None:
     return page
 
 
-def chunk(text: str) -> list[str]:
-    paras, chunks, cur = [p for p in re.split(r"\n+", text) if p], [], ""
-    for p in paras:
-        if cur and len(cur) + len(p) > CHUNK_CHARS:
-            chunks.append(cur)
-            cur = cur[-OVERLAP:] + "\n" + p
-        else:
-            cur = f"{cur}\n{p}" if cur else p
-    if cur:
-        chunks.append(cur)
-    return [c for c in chunks if len(c) > 80]
-
-
 def main() -> None:
     refresh = "--refresh" in sys.argv
     ids, docs, metas = [], [], []
 
     def add(text, source, title, category):
-        for i, c in enumerate(chunk(text)):
+        for i, c in enumerate(chunk_markdown(text, title)):
             ids.append(hashlib.md5(f"{source}#{i}".encode()).hexdigest())
             docs.append(c)
             metas.append({"source": source, "title": title, "category": category})
@@ -117,11 +106,10 @@ def main() -> None:
                 f"healthcheck-check:{c.name}", c.name, c.category)
 
     import chromadb
-    from app.rag import store
-    client = chromadb.PersistentClient(path=str(store.CHROMA_DIR))
+    client = chromadb.PersistentClient(path=str(get_settings().chroma_dir))
     if COLLECTION in [c if isinstance(c, str) else c.name for c in client.list_collections()]:
         client.delete_collection(COLLECTION)
-    store._collection = None
+    store.reset()
     col = get_collection()
     for i in range(0, len(ids), 128):
         col.add(ids=ids[i:i+128], documents=docs[i:i+128], metadatas=metas[i:i+128])

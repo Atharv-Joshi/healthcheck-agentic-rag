@@ -1,17 +1,8 @@
 #!/bin/sh
 set -e
-# Seed mock data and build the vector index on first boot only.
-python - <<'PY'
-from sqlalchemy import inspect, select, func
-from app.db.database import engine, SessionLocal
-from app.db.models import Stack
-if not inspect(engine).has_table("stacks"):
-    need = True
-else:
-    with SessionLocal() as db:
-        need = db.scalar(select(func.count()).select_from(Stack)) == 0
-open("/tmp/need_seed", "w").write("1" if need else "0")
-PY
-if [ "$(cat /tmp/need_seed)" = "1" ]; then python -m scripts.seed; fi
+# Schema from migrations, mock data and vector index on first boot only (both steps are idempotent).
+alembic upgrade head
+python -m scripts.seed --if-empty
 if [ -z "$(ls -A "$CHROMA_DIR" 2>/dev/null)" ]; then python -m scripts.ingest_docs; fi
-exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}"
+# --proxy-headers so the rate limiter sees the real client IP behind Render/Railway's proxy
+exec uvicorn app.main:app --host 0.0.0.0 --port "${PORT:-8000}" --proxy-headers --forwarded-allow-ips="*"

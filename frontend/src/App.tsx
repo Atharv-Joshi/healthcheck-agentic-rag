@@ -36,7 +36,7 @@ export default function App() {
         </p>
       </header>
 
-      <main className="flex-1 space-y-4 overflow-y-auto rounded-lg border border-slate-200 bg-white p-4">
+      <main role="log" aria-live="polite" aria-label="Conversation" className="flex-1 space-y-4 overflow-y-auto rounded-lg border border-slate-200 bg-white p-4">
         {messages.length === 0 && <ExampleQuestions onPick={send} />}
         {messages.map((m, i) => (
           <MessageBubble key={i} message={m} />
