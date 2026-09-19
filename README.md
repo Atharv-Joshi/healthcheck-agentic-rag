@@ -25,6 +25,13 @@ One agent, two retrieval paths, and the LLM decides which to use (or both):
   recommendations, chunked (~1000 chars, overlap) and embedded locally with `all-MiniLM-L6-v2`.
 - The UI shows which tools answered each question (blue = SQL, violet = docs).
 
+## Two agent implementations
+
+- `agent.py` — the hand-written tool-calling loop (default). ~30 lines; every message and tool result is explicit.
+- `agent_lc.py` — the same agent on LangChain (`create_agent`, a LangGraph graph). It wraps the *same* tool
+  schemas and dispatcher, so the only difference is orchestration. Switch with `AGENT_IMPL=langchain`;
+  `python -m scripts.eval_routing` runs the routing eval against whichever is selected.
+
 ## Run locally
 
 ```bash
@@ -56,4 +63,4 @@ frontend/            React + Tailwind chat UI
 - Single-shot Q&A: no conversation memory yet.
 - Failed entities are stored as a sample (max 25 per check); `entity_count` holds the true total.
 - No automated eval set for routing quality yet.
-- The planned LangChain refactor is not done; the raw loop is intentional so the mechanics are explicit.
+- Neither agent has been compared on live-model routing results yet (waiting on LLM credit).

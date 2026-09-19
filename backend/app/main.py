@@ -7,10 +7,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.agent import ask
+from app.agent import ask as ask_raw
+from app.agent_lc import ask as ask_langchain
 from app.db.database import SessionLocal
 
 app = FastAPI(title="Healthcheck Q&A")
+
+# AGENT_IMPL=raw (hand-written loop, default) | langchain
+ask = ask_langchain if os.getenv("AGENT_IMPL") == "langchain" else ask_raw
 
 
 def get_db():
