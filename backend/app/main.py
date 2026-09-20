@@ -49,6 +49,8 @@ class AskRequest(BaseModel):
 class AskResponse(BaseModel):
     answer: str
     tool_calls: list[dict]
+    retries: list[dict] = []           # supervised retries triggered while answering
+    verification: dict | None = None   # citation check result (when VERIFY_ANSWERS=true)
 
 
 @app.get("/health")

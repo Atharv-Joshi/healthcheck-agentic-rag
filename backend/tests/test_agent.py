@@ -2,6 +2,7 @@
 from types import SimpleNamespace as NS
 
 from app.agent import MAX_STEPS, ask
+from app.config import get_settings
 
 
 class Msg(NS):
@@ -39,7 +40,8 @@ def test_tool_then_answer(db):
 
 def test_no_tools_needed(db):
     c, _ = client([Msg(content="Paris.", tool_calls=None)])
-    assert ask(db, "Capital of France?", c) == {"answer": "Paris.", "tool_calls": []}
+    r = ask(db, "Capital of France?", c)
+    assert (r["answer"], r["tool_calls"], r["retries"], r["verification"]) == ("Paris.", [], [], None)
 
 
 def test_empty_model_content_gets_a_fallback_not_none(db):
@@ -60,3 +62,45 @@ def test_tool_error_is_fed_back_and_loop_continues(db):
     r = ask(db, "status?", c)
     assert "Known stacks" in seen[1]["messages"][-1]["content"]
     assert r["answer"] == "Which stack did you mean?"
+
+
+# ---- agentic retrieval, end to end through the loop ----
+def _docs_run(monkeypatch, distances_by_query, completions):
+    from app.rag import store
+    from tests.test_supervisor import FakeCollection, completer
+    monkeypatch.setattr(store, "get_collection", lambda: FakeCollection(distances_by_query))
+    return completer(*completions)
+
+
+def test_weak_search_is_retried_and_reported_in_the_response(db, monkeypatch):
+    complete = _docs_run(monkeypatch, {"weak q": [0.7], "better q": [0.3]}, ["weak q", "better q"])
+    c, seen = client([Msg(content=None, tool_calls=[tool_call("search_docs", '{"query": "why care"}')]),
+                      Msg(content="Because of X.", tool_calls=None)])
+    r = ask(db, "why should I care?", c, complete=complete)
+    assert [e["kind"] for e in r["retries"]] == ["vector_retry"] and r["answer"] == "Because of X."
+    fed_back = seen[1]["messages"][-1]["content"]
+    assert '"retried": true' in fed_back and '"confidence": "high"' in fed_back
+
+
+def test_thin_evidence_reaches_the_model_with_a_do_not_guess_instruction(db, monkeypatch):
+    complete = _docs_run(monkeypatch, {}, ["a", "b"])  # everything scores 0.05 -> filtered
+    c, seen = client([Msg(content=None, tool_calls=[tool_call("search_docs", '{"query": "zzz"}')]),
+                      Msg(content="I couldn't find that in the docs.", tool_calls=None)])
+    ask(db, "zzz?", c, complete=complete)
+    assert "Do NOT answer from general knowledge" in seen[1]["messages"][-1]["content"]
+
+
+def test_unsupported_answer_is_flagged_when_verification_is_on(db, monkeypatch):
+    monkeypatch.setattr(get_settings(), "verify_answers", True)
+    complete = _docs_run(monkeypatch, {"q": [0.3]}, ["q", "no\nThe docs never say that."])
+    c, _ = client([Msg(content=None, tool_calls=[tool_call("search_docs", '{"query": "q"}')]),
+                   Msg(content="A confident but unsupported claim.", tool_calls=None)])
+    r = ask(db, "q?", c, complete=complete)
+    assert r["verification"]["status"] == "unsupported"
+
+
+def test_verification_is_off_by_default(db, monkeypatch):
+    complete = _docs_run(monkeypatch, {"q": [0.3]}, ["q"])
+    c, _ = client([Msg(content=None, tool_calls=[tool_call("search_docs", '{"query": "q"}')]),
+                   Msg(content="Answer.", tool_calls=None)])
+    assert ask(db, "q?", c, complete=complete)["verification"] is None

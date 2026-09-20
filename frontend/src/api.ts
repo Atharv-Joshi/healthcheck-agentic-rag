@@ -1,5 +1,18 @@
 export type ToolCall = { name: string; arguments: string }
-export type Answer = { answer: string; tool_calls: ToolCall[] }
+export type Retry = {
+  tool: string
+  kind: 'vector_retry' | 'db_fallback'
+  reason: string
+  retry_query?: string
+  outcome: string
+}
+export type Verification = { status: 'supported' | 'unsupported' | 'skipped'; reason: string }
+export type Answer = {
+  answer: string
+  tool_calls: ToolCall[]
+  retries: Retry[]
+  verification: Verification | null
+}
 
 const TIMEOUT_MS = 60_000
 

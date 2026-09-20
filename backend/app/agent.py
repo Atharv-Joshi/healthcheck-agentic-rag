@@ -4,7 +4,10 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.prompts import SYSTEM_PROMPT
-from app.tools.registry import TOOL_SCHEMAS, call_tool
+from app.rag.reformulate import Completer, openai_completer
+from app.rag.verify import verify_answer
+from app.tools.registry import TOOL_SCHEMAS
+from app.tools.supervisor import ToolContext, supervised_call
 
 MAX_STEPS = 6  # hard cap on LLM round-trips per question
 
@@ -17,9 +20,11 @@ def get_client() -> OpenAI:
                   timeout=cfg.llm_timeout_s, max_retries=1)
 
 
-def ask(db: Session, question: str, client: OpenAI | None = None) -> dict:
+def ask(db: Session, question: str, client: OpenAI | None = None, complete: Completer | None = None) -> dict:
     cfg = get_settings()
     client = client or get_client()
+    complete = complete or openai_completer(client, cfg.llm_model)
+    ctx = ToolContext(db=db, question=question, complete=complete)
     messages = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": question}]
     trace = []
 
@@ -28,12 +33,21 @@ def ask(db: Session, question: str, client: OpenAI | None = None) -> dict:
                                               max_tokens=cfg.llm_max_output_tokens)
         msg = resp.choices[0].message
         if not msg.tool_calls:
-            return {"answer": msg.content or "I couldn't produce an answer. Please try rephrasing.", "tool_calls": trace}
+            answer = msg.content or "I couldn't produce an answer. Please try rephrasing."
+            return finish(ctx, answer, trace)
 
         messages.append(msg.model_dump(exclude_none=True))
         for tc in msg.tool_calls:
-            result = call_tool(db, tc.function.name, tc.function.arguments)
+            result = supervised_call(ctx, tc.function.name, tc.function.arguments)
             trace.append({"name": tc.function.name, "arguments": tc.function.arguments})
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
 
-    return {"answer": "I couldn't finish answering within the tool-call limit.", "tool_calls": trace}
+    return finish(ctx, "I couldn't finish answering within the tool-call limit.", trace, verify=False)
+
+
+def finish(ctx: ToolContext, answer: str, trace: list[dict], verify: bool = True) -> dict:
+    """Shared response shape for both agent implementations (optionally with the stretch citation check)."""
+    verification = None
+    if verify and get_settings().verify_answers and ctx.complete:
+        verification = verify_answer(ctx.complete, answer, ctx.snippets)
+    return {"answer": answer, "tool_calls": trace, "retries": ctx.events, "verification": verification}

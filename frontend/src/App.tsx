@@ -19,7 +19,13 @@ export default function App() {
     setLoading(true)
     try {
       const r = await askApi(question)
-      setMessages((m) => [...m, { role: 'assistant', text: r.answer, toolCalls: r.tool_calls }])
+      setMessages((m) => [...m, {
+          role: 'assistant',
+          text: r.answer,
+          toolCalls: r.tool_calls,
+          retries: r.retries,
+          verification: r.verification,
+        }])
     } catch (e) {
       setMessages((m) => [...m, { role: 'assistant', text: (e as Error).message, toolCalls: [], error: true }])
     } finally {
