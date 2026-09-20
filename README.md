@@ -35,6 +35,31 @@ One agent, two retrieval paths, and the LLM decides which to use (or both):
   schemas and dispatcher, so the only difference is orchestration. Switch with `AGENT_IMPL=langchain`;
   `python -m scripts.eval_routing` runs the routing eval against whichever is selected.
 
+## Agentic RAG: the agent supervises its own retrieval
+
+Beyond routing between SQL and docs, a supervision layer (`backend/app/tools/supervisor.py`) sits between the
+agent and the tools so the system doesn't confidently answer from thin evidence:
+
+1. **Query reformulation** (`rag/reformulate.py`): before a docs search, the query is rewritten into a clean,
+   self-contained one using the user's question plus the report lookups already made this turn
+   ("why should I care about this one?" → "importance and business impact of SSO Enabled check failing").
+   It is a standalone function with an injected LLM callable, and falls back to the original query on any failure.
+2. **Retry on thin results, capped at one per tool call.** A docs search is *thin* if nothing clears the relevance
+   threshold, the top similarity is below 0.40, or there are under 200 chars of evidence. Then the query is
+   re-phrased (category filter dropped) and searched again, keeping the better result. A DB call that returns
+   **zero rows** falls back to a docs search (labelled background-only, never report data).
+   Every retry is logged (`RETRY triggered ...`), returned in the API response (`retries`), and shown in the UI
+   as an amber chip.
+3. **Tell the model when evidence is weak.** Low/no-confidence results carry an instruction not to answer from
+   general knowledge; the model says it couldn't find enough information.
+4. **Citation check (stretch, off by default).** With `VERIFY_ANSWERS=true`, one extra LLM call checks that the
+   retrieved snippets support the answer's documentation claims; unsupported answers are flagged in the response
+   and UI, not silently rewritten. It fails open if the check itself errors.
+
+Deliberately not built: BM25/hybrid search and cross-encoder reranking (the corpus is small and clean), OCR
+(sources are already text), and a docs→DB fallback (check text from Postgres is already in the vector index, so
+it would add nothing). Cost: reformulation adds one short LLM call per docs search; a retry adds one more.
+
 ## Run locally
 
 ```bash

@@ -23,6 +23,11 @@ class Settings(BaseSettings):
 
     chroma_dir: Path = _ROOT / "chroma_db"
     frontend_dist: Path = Path("/app/frontend_dist")
+    # --- agentic retrieval supervision ---
+    reformulate_queries: bool = True   # rewrite the doc-search query before embedding it
+    retry_score: float = 0.40          # top similarity below this => "low confidence" => one retry
+    min_evidence_chars: int = 200      # less passage text than this => "too thin" => one retry
+    verify_answers: bool = False       # stretch: LLM check that retrieved snippets support the answer (+1 call)
     # Measured on this corpus: on-topic queries score >= 0.43, off-topic <= 0.18 (cosine similarity).
     min_doc_score: float = 0.30
 

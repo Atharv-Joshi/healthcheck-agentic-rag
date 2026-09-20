@@ -7,6 +7,7 @@ from langchain_core.messages import AIMessage, ToolMessage
 from app import main
 from app.agent_lc import FALLBACK_ANSWER, _text, ask, build_tools
 from app.tools.registry import TOOL_SCHEMAS
+from app.tools.supervisor import ToolContext
 
 
 class FakeModel(GenericFakeChatModel):
@@ -19,7 +20,7 @@ def call(name, args, id="c1"):
 
 
 def test_wraps_every_shared_tool_with_its_schema(db):
-    tools = build_tools(db)
+    tools = build_tools(ToolContext(db=db, question="q"))
     assert [t.name for t in tools] == [s["function"]["name"] for s in TOOL_SCHEMAS]
     status = next(t for t in tools if t.name == "list_checks_by_status")
     assert status.args["status"]["enum"] == ["passed", "failed", "skipped"]
@@ -33,8 +34,8 @@ def test_tool_then_answer(db):
 
 
 def test_no_tools_needed(db):
-    assert ask(db, "Capital of France?", FakeModel(messages=iter([AIMessage(content="Paris.")]))) == \
-        {"answer": "Paris.", "tool_calls": []}
+    r = ask(db, "Capital of France?", FakeModel(messages=iter([AIMessage(content="Paris.")])))
+    assert (r["answer"], r["tool_calls"], r["retries"], r["verification"]) == ("Paris.", [], [], None)
 
 
 def test_empty_model_content_gets_a_fallback(db):
@@ -73,3 +74,16 @@ def test_agent_impl_setting_selects_the_langchain_agent(monkeypatch):
     assert main._select_agent() is ask
     monkeypatch.setattr(main.settings, "agent_impl", "raw")
     assert main._select_agent() is main.ask_raw
+
+
+def test_langchain_agent_gets_the_same_retrieval_supervision(db, monkeypatch):
+    """Same weak-then-better scenario as the raw agent's test: the retry lives in the shared layer."""
+    from app.rag import store
+    from tests.test_supervisor import FakeCollection, completer
+
+    monkeypatch.setattr(store, "get_collection", lambda: FakeCollection({"weak q": [0.7], "better q": [0.3]}))
+    r = ask(db, "why should I care?", FakeModel(messages=iter([
+        call("search_docs", {"query": "why care"}), AIMessage(content="Because of X.")])),
+        complete=completer("weak q", "better q"))
+    assert [e["kind"] for e in r["retries"]] == ["vector_retry"] and r["answer"] == "Because of X."
+    assert r["verification"] is None

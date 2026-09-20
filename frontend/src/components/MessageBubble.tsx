@@ -1,10 +1,17 @@
 import Markdown from 'react-markdown'
-import type { ToolCall } from '../api'
+import type { Retry, ToolCall, Verification } from '../api'
 import { ToolChip } from './ToolChip'
 
 export type Message =
   | { role: 'user'; text: string }
-  | { role: 'assistant'; text: string; toolCalls: ToolCall[]; error?: boolean }
+  | {
+      role: 'assistant'
+      text: string
+      toolCalls: ToolCall[]
+      retries?: Retry[]
+      verification?: Verification | null
+      error?: boolean
+    }
 
 export function MessageBubble({ message }: { message: Message }) {
   if (message.role === 'user') {
@@ -23,11 +30,28 @@ export function MessageBubble({ message }: { message: Message }) {
       >
         {message.error ? message.text : <Markdown>{message.text}</Markdown>}
       </div>
-      {message.toolCalls.length > 0 && (
+      {(message.toolCalls.length > 0 || message.retries?.length || message.verification?.status === 'unsupported') && (
         <div className="flex flex-wrap gap-1">
           {message.toolCalls.map((c, i) => (
             <ToolChip key={i} call={c} />
           ))}
+          {message.retries?.map((r, i) => (
+            <span
+              key={`r${i}`}
+              title={`${r.outcome}${r.retry_query ? ` · retry query: ${r.retry_query}` : ''}`}
+              className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800"
+            >
+              ↻ retried · {r.reason}
+            </span>
+          ))}
+          {message.verification?.status === 'unsupported' && (
+            <span
+              title={message.verification.reason}
+              className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800"
+            >
+              ⚠ unverified against docs
+            </span>
+          )}
         </div>
       )}
     </div>

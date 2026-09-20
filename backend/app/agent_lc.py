@@ -16,24 +16,27 @@ from langchain_openai import ChatOpenAI
 from langgraph.errors import GraphRecursionError
 from sqlalchemy.orm import Session
 
-from app.agent import MAX_STEPS
+from app.agent import MAX_STEPS, finish
 from app.config import get_settings
 from app.prompts import SYSTEM_PROMPT
-from app.tools.registry import TOOL_SCHEMAS, call_tool
+from app.rag.reformulate import Completer, openai_completer
+from app.tools.registry import TOOL_SCHEMAS
+from app.tools.supervisor import ToolContext, supervised_call
 
 log = logging.getLogger(__name__)
 
 FALLBACK_ANSWER = "I couldn't produce an answer. Please try rephrasing."
 
 
-def build_tools(db: Session) -> list[StructuredTool]:
-    """Wrap the existing OpenAI-format schemas + dispatcher, so both agents share one tool definition."""
+def build_tools(ctx: ToolContext) -> list[StructuredTool]:
+    """Wrap the existing OpenAI-format schemas + supervised dispatcher: both agents share tools AND retrieval
+    supervision (reformulation, one-shot retry), so they differ only in orchestration."""
     tools = []
     for spec in TOOL_SCHEMAS:
         fn = spec["function"]
 
         def run(_name=fn["name"], **kwargs) -> str:
-            return call_tool(db, _name, json.dumps(kwargs))
+            return supervised_call(ctx, _name, json.dumps(kwargs))
 
         tools.append(StructuredTool.from_function(
             func=run, name=fn["name"], description=fn["description"], args_schema=fn["parameters"]))
@@ -55,17 +58,22 @@ def _text(content) -> str:
     return "".join(b.get("text", "") if isinstance(b, dict) else str(b) for b in content or [])
 
 
-def ask(db: Session, question: str, model=None) -> dict:
-    agent = create_agent(model or get_model(), build_tools(db), system_prompt=SYSTEM_PROMPT)
+def ask(db: Session, question: str, model=None, complete: Completer | None = None) -> dict:
+    cfg = get_settings()
+    if complete is None and model is None:  # real run: reformulation shares the configured provider
+        from app.agent import get_client
+        complete = openai_completer(get_client(), cfg.llm_model)
+    ctx = ToolContext(db=db, question=question, complete=complete)
+    agent = create_agent(model or get_model(), build_tools(ctx), system_prompt=SYSTEM_PROMPT)
     # each step is one model node + one tools node, hence the factor of 2
     config = {"recursion_limit": 2 * MAX_STEPS + 1}
     try:
         state = agent.invoke({"messages": [HumanMessage(question)]}, config)
     except GraphRecursionError:
         log.warning("step limit reached for question=%r", question)
-        return {"answer": "I couldn't finish answering within the tool-call limit.", "tool_calls": []}
+        return finish(ctx, "I couldn\'t finish answering within the tool-call limit.", [], verify=False)
 
     messages = state["messages"]
     trace = [{"name": c["name"], "arguments": json.dumps(c["args"])}
              for m in messages if isinstance(m, AIMessage) for c in m.tool_calls]
-    return {"answer": _text(messages[-1].content).strip() or FALLBACK_ANSWER, "tool_calls": trace}
+    return finish(ctx, _text(messages[-1].content).strip() or FALLBACK_ANSWER, trace)

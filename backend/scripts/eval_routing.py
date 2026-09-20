@@ -40,6 +40,14 @@ CASES = [
 ]
 
 
+# Supervision cases: (question, should_a_retry_fire). These measure the agentic part, not the routing.
+# TODO(human): add 4-6 cases from what real users would actually type. Mix vague/conversational questions that
+# should be rewritten and retried (e.g. ones with no concrete feature name, or typos) with clear questions that
+# should NOT retry (retry=False), so the eval also catches over-eager retrying, which wastes LLM calls.
+# Format: ("why should I care about this one?", True)
+RETRY_CASES: list[tuple[str, bool]] = []
+
+
 def main() -> None:
     passed = 0
     with SessionLocal() as db:
@@ -49,10 +57,23 @@ def main() -> None:
             ok = all(used & group for group in must) and not (used & must_not)
             passed += ok
             print(f"{'PASS' if ok else 'FAIL'}  {q}\n      tools={sorted(used)}")
+            if r.get("retries"):
+                print(f"      retries={[(e['kind'], e['reason']) for e in r['retries']]}")
             if not ok:
                 print(f"      answer: {r['answer'][:160]!r}")
+
+        retry_passed = 0
+        for q, expect_retry in RETRY_CASES:
+            r = ask(db, q)
+            ok = bool(r.get("retries")) == expect_retry
+            retry_passed += ok
+            print(f"{'PASS' if ok else 'FAIL'}  [retry={'yes' if expect_retry else 'no'}] {q}\n"
+                  f"      retries={[(e['kind'], e['reason']) for e in r.get('retries', [])]}")
+
     print(f"\n{passed}/{len(CASES)} routed correctly")
-    sys.exit(0 if passed == len(CASES) else 1)
+    if RETRY_CASES:
+        print(f"{retry_passed}/{len(RETRY_CASES)} supervision cases behaved as expected")
+    sys.exit(0 if passed == len(CASES) and retry_passed == len(RETRY_CASES) else 1)
 
 
 if __name__ == "__main__":
