@@ -1,2 +1,53 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
+
+/* Palette: a violet primary with a mint "passed" accent and purple-tinted neutrals, in the spirit of the CMS
+   space's usual look. The tokens and the app mark are original; every text/background pair used was checked
+   against WCAG AA (>= 4.5:1). */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+  --color-brand-50: #f3edff;
+  --color-brand-100: #e8dcff;
+  --color-brand-200: #d4bcff;
+  --color-brand-300: #bd98ff;
+  --color-brand-400: #a877fa;
+  --color-brand-500: #8b57ec;
+  --color-brand-600: #6d3fd0;
+  --color-brand-700: #5b30b0;
+  --color-brand-800: #4a2896;
+  --color-brand-900: #33206a;
+
+  --color-ink: #231d33;
+  --color-ink-muted: #5f5875;
+  --color-canvas: #f7f4ff;
+
+  --color-pass: #22a06b;
+  --color-pass-soft: #d8f8df;
+  --color-pass-ink: #17663a;
+  --color-fail: #e5484d;
+  --color-periwinkle-100: #e3e7ff;
+  --color-periwinkle-800: #3b3f99;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  margin: 0;
+  color: var(--color-ink);
+  background:
+    radial-gradient(60rem 28rem at 85% -10%, rgb(168 119 250 / 0.16), transparent 60%),
+    radial-gradient(40rem 22rem at -10% 0%, rgb(137 156 250 / 0.14), transparent 60%),
+    var(--color-canvas);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
