@@ -25,7 +25,7 @@ One agent, two retrieval paths, and the LLM decides which to use (or both):
   cosine-similarity threshold (0.30, chosen from measured on-topic ≥0.43 vs off-topic ≤0.18 scores) are dropped, so
   the model is told when nothing relevant exists instead of being handed noise.
 - **RAG corpus:** ~37 public Contentstack docs pages (official Markdown export) + the check descriptions and
-  recommendations, chunked (~1000 chars, overlap) and embedded locally with `all-MiniLM-L6-v2`.
+  recommendations, chunked (~1000 chars, overlap) and embedded locally with `all-MiniLM-L6-v2` on ONNX Runtime (Chroma's built-in embedder: no torch, small image, low RAM).
 - The UI shows which tools answered each question (blue = SQL, violet = docs).
 
 ## Agentic RAG: the agent supervises its own retrieval
