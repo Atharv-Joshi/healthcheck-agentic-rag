@@ -29,6 +29,9 @@ CASES = [
     ("What are best practices for content modeling?", [DOCS], SQL),
     ("What is the difference between a management token and a delivery token?", [DOCS], SQL),
     ("Why are workflows useful?", [DOCS], SQL),
+    # Contentstack facts must be grounded in docs, never answered from the model's memory
+    ("What is the rate limit of the Content Management API?", [DOCS], SQL),
+    ("How many fields can a content type have?", [DOCS], SQL),
     # both
     ("Is SSO enabled for Acme Retail - Web, and why does it matter?", [{"get_check_status"}, DOCS], set()),
     ("What's our top action required on Globex Corporate Site and how do I fix it?", [SQL, DOCS], set()),
