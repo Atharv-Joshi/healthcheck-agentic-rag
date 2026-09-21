@@ -23,7 +23,8 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.rag import store
 from app.rag.reformulate import Completer, broaden_query, reformulate_query
-from app.tools.registry import call_tool
+from app.db.models import Stack
+from app.tools.registry import STACK_TOOLS, call_tool
 
 log = logging.getLogger(__name__)
 
@@ -42,6 +43,12 @@ class ToolContext:
     notes: list[str] = field(default_factory=list)      # short summaries of earlier report lookups
     events: list[dict] = field(default_factory=list)    # retries triggered this run (returned to the client)
     snippets: list[str] = field(default_factory=list)   # doc passages the answer may rely on (for verification)
+    stack: Stack | None = None                          # when set, the chat is locked to this one stack
+    conversation: list[str] = field(default_factory=list)  # earlier-turn context lines for the query reformulator
+
+    def context(self) -> list[str]:
+        """What the reformulator sees: what was said earlier, plus the report lookups made this turn."""
+        return self.conversation[-3:] + self.notes[-3:]
 
 
 # ---------- judging retrieval quality ----------
@@ -89,13 +96,13 @@ def _search_docs(ctx: ToolContext, args: dict) -> dict:
     draft, category = args.get("query") or ctx.question, args.get("category")
     query = draft
     if cfg.reformulate_queries and ctx.complete:
-        query = reformulate_query(ctx.complete, ctx.question, draft, ctx.notes[-3:])
+        query = reformulate_query(ctx.complete, ctx.question, draft, ctx.context())
     passages = store.search(query, k=4, category=category)
     info = {"query": query, **({"original_query": draft} if query != draft else {})}
 
     weakness = doc_weakness(passages)
     if weakness:  # one retry: differently-worded query, category filter dropped
-        retry_q = broaden_query(ctx.complete, ctx.question, query, ctx.notes[-3:]) if ctx.complete else query
+        retry_q = broaden_query(ctx.complete, ctx.question, query, ctx.context()) if ctx.complete else query
         retried = store.search(retry_q, k=4)
         improved = _strength(retried) > _strength(passages)
         if improved:
@@ -116,7 +123,7 @@ def _db_fallback(ctx: ToolContext, tool: str, data: dict) -> dict:
     cfg = get_settings()
     query = ctx.question
     if cfg.reformulate_queries and ctx.complete:
-        query = reformulate_query(ctx.complete, ctx.question, ctx.question, ctx.notes[-3:])
+        query = reformulate_query(ctx.complete, ctx.question, ctx.question, ctx.context())
     passages = store.search(query, k=3)
     _record(ctx, {"tool": tool, "kind": "db_fallback", "reason": "database returned zero rows",
                   "retry_query": query, "outcome": f"{len(passages)} background passages"})
@@ -128,6 +135,16 @@ def _db_fallback(ctx: ToolContext, tool: str, data: dict) -> dict:
 
 def supervised_call(ctx: ToolContext, name: str, arguments_json: str) -> str:
     """Run one tool call under supervision and return the JSON string for the model."""
+    if ctx.stack is not None:  # stack lock: enforced here, so nothing the model or user says can reach another stack
+        if name == "list_stacks":
+            return json.dumps({"error": "Not available: this chat is locked to one stack."})
+        if name in STACK_TOOLS:
+            try:
+                args = json.loads(arguments_json or "{}")
+            except json.JSONDecodeError as e:
+                return json.dumps({"error": f"Bad arguments: {e}"})
+            args["stack_name"] = ctx.stack.name  # overrides anything the model supplied
+            arguments_json = json.dumps(args)
     if name == "search_docs":
         try:
             return json.dumps(_search_docs(ctx, json.loads(arguments_json or "{}")))

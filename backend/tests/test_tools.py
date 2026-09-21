@@ -74,3 +74,27 @@ def test_unexpected_exception_is_contained_and_session_recovers(db, monkeypatch)
 def test_out_of_scope_is_a_registered_tool(db):
     assert "out_of_scope" in {s["function"]["name"] for s in TOOL_SCHEMAS}
     assert run(db, "out_of_scope", reason="history")["off_topic"] is True
+
+
+def test_scoped_schemas_drop_stack_name_and_list_stacks_but_keep_everything_else():
+    from app.tools.registry import STACK_TOOLS, scoped_tool_schemas
+    scoped = {s["function"]["name"]: s for s in scoped_tool_schemas()}
+    assert "list_stacks" not in scoped and {"search_docs", "out_of_scope", "get_check_status"} <= set(scoped)
+    for name in STACK_TOOLS - {"list_stacks"}:
+        params = scoped[name]["function"]["parameters"]
+        assert "stack_name" not in params["properties"] and "stack_name" not in params.get("required", [])
+    assert "stack_name" in next(s for s in TOOL_SCHEMAS if s["function"]["name"] == "get_check_status")[
+        "function"]["parameters"]["properties"]  # the shared unscoped schema was not mutated
+
+
+def test_an_exact_stack_name_wins_even_when_it_is_a_prefix_of_another(db):
+    from datetime import date
+    from app.db.models import Stack
+    db.add(Stack(name="Acme", entries_count=1, assets_count=1, run_date=date(2026, 9, 1)))
+    db.flush()
+    try:
+        assert queries._resolve_stack(db, "Acme").name == "Acme"
+        # a genuinely ambiguous partial name is still reported as ambiguous, with candidates
+        assert "ambiguous" in run(db, "get_stack_summary", stack_name="Acme R")["error"]
+    finally:
+        db.rollback()

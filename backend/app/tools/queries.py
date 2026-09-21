@@ -23,6 +23,9 @@ class EntityNotFound(Exception):
 
 def _resolve_stack(db: Session, name: str) -> Stack:
     matches = db.scalars(select(Stack).where(Stack.name.ilike(_like(name), escape="\\"))).all()
+    exact = [m for m in matches if m.name.lower() == name.strip().lower()]
+    if len(exact) == 1:  # "Acme" must not become ambiguous just because "Acme Retail" also exists
+        return exact[0]
     if len(matches) == 1:
         return matches[0]
     if not matches:

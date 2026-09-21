@@ -1,4 +1,5 @@
 """OpenAI-format tool schemas plus dispatch. The descriptions are what the LLM routes on."""
+import copy
 import json
 import logging
 import time
@@ -44,7 +45,10 @@ TOOL_SCHEMAS = [
     _fn("out_of_scope", "Call this, and nothing else, when the question is not about Contentstack or the Healthcheck "
         "audit report (general knowledge, history, entertainment, unrelated coding, personal advice, etc.). "
         "The user is shown a fixed message; do not answer the question.",
-        {"reason": {"type": "string", "description": "A few words on why it is off topic."}}, []),
+        {"reason": {"type": "string", "description": "A few words on why it is off topic."},
+         "kind": {"type": "string", "enum": ["off_topic", "other_stack"],
+                  "description": "'other_stack' only in a stack-locked chat when the user asks about, or wants to "
+                                 "compare with, a different stack. Otherwise 'off_topic'."}}, []),
     _fn("search_docs", "Semantic search over Contentstack documentation and check explanations. Use for conceptual questions: "
         "why something matters, how to fix it, what a feature is, best practices. NOT for counts, statuses or lists from the report.",
         {"query": {"type": "string", "description": "Self-contained search query, rephrased with the key concept names."},
@@ -65,7 +69,7 @@ _DISPATCH = {
     "list_checks_by_status": queries.list_checks_by_status,
     "list_actions_required": queries.list_actions_required, "get_failed_entities": queries.get_failed_entities,
     "search_docs": _search_docs,
-    "out_of_scope": lambda _db, reason="": {"off_topic": True, "reason": reason},
+    "out_of_scope": lambda _db, reason="", kind="off_topic": {"off_topic": True, "reason": reason, "kind": kind},
 }
 
 
@@ -93,3 +97,21 @@ def call_tool(db: Session, name: str, arguments_json: str) -> str:
         db.rollback()  # a failed statement leaves the session unusable until rolled back
         log.exception("tool=%s failed args=%s", name, arguments_json)
         return json.dumps({"error": "Internal error while running this tool."})
+
+
+# Tools that take a stack. In a stack-locked chat the supervisor injects the chat's stack into every one of these.
+STACK_TOOLS = {s["function"]["name"] for s in TOOL_SCHEMAS if "stack_name" in s["function"]["parameters"]["properties"]}
+
+
+def scoped_tool_schemas() -> list[dict]:
+    """Schemas for a stack-locked chat: no `stack_name` argument (the model can't pick a stack) and no list_stacks."""
+    out = []
+    for spec in TOOL_SCHEMAS:
+        if spec["function"]["name"] == "list_stacks":
+            continue
+        spec = copy.deepcopy(spec)
+        params = spec["function"]["parameters"]
+        params["properties"].pop("stack_name", None)
+        params["required"] = [r for r in params.get("required", []) if r != "stack_name"]
+        out.append(spec)
+    return out
