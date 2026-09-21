@@ -2,6 +2,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ROOT = Path(__file__).resolve().parents[2]
@@ -30,6 +31,16 @@ class Settings(BaseSettings):
     verify_answers: bool = False       # stretch: LLM check that retrieved snippets support the answer (+1 call)
     # Measured on this corpus: on-topic queries score >= 0.43, off-topic <= 0.18 (cosine similarity).
     min_doc_score: float = 0.30
+
+    @field_validator("database_url")
+    @classmethod
+    def _use_psycopg2_driver(cls, url: str) -> str:
+        """Hosts (Render, Railway, Heroku) hand out `postgres://` or `postgresql://` URLs. SQLAlchemy 2 rejects the
+        first outright and the second only works by default-driver accident, so pin the driver we install."""
+        for scheme in ("postgres://", "postgresql://"):
+            if url.startswith(scheme):
+                return "postgresql+psycopg2://" + url[len(scheme):]
+        return url
 
 
 @lru_cache
