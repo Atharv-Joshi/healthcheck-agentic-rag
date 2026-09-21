@@ -3,7 +3,7 @@ services:
   - type: web
     name: healthcheck-qa
     runtime: docker
-    plan: starter   # the free tier's 512MB RAM is too small for torch + sentence-transformers
+    plan: starter   # embeddings use ONNX Runtime (no torch); confirm Render's RAM per plan before choosing
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL

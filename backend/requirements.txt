@@ -9,7 +9,6 @@ pydantic-settings==2.15.0
 pydantic==2.13.5
 pytest==9.1.1
 python-dotenv==1.2.3
-sentence-transformers==6.1.0
 slowapi==0.1.10
 uvicorn==0.53.0
 langchain==1.4.2

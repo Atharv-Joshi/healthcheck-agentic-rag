@@ -1,4 +1,5 @@
 import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import type { Retry, ToolCall, Verification } from '../api'
 import { ToolChip } from './ToolChip'
 
@@ -28,7 +29,7 @@ export function MessageBubble({ message }: { message: Message }) {
           message.error ? 'bg-red-50 text-red-800' : 'prose prose-sm max-w-none bg-slate-100 text-slate-900'
         }`}
       >
-        {message.error ? message.text : <Markdown>{message.text}</Markdown>}
+        {message.error ? message.text : <Markdown remarkPlugins={[remarkGfm]}>{message.text}</Markdown>}
       </div>
       {(message.toolCalls.length > 0 || message.retries?.length || message.verification?.status === 'unsupported') && (
         <div className="flex flex-wrap gap-1">

@@ -1,16 +1,16 @@
-"""Chroma vector store + local embeddings (sentence-transformers, no API cost)."""
+"""Chroma vector store + local embeddings (all-MiniLM-L6-v2 via ONNX Runtime: no torch, no API cost)."""
 import logging
 import threading
 
 import chromadb
-from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2
 
 from app.config import get_settings
 
 log = logging.getLogger(__name__)
 
 COLLECTION = "healthcheck_docs"
-EMBED_MODEL = "all-MiniLM-L6-v2"
+EMBED_MODEL = "all-MiniLM-L6-v2"  # what ONNXMiniLM_L6_V2 runs; recorded for documentation
 
 _lock = threading.Lock()
 _collection = None
@@ -23,7 +23,7 @@ def get_collection():
         if _collection is None:
             client = chromadb.PersistentClient(path=str(get_settings().chroma_dir))
             _collection = client.get_or_create_collection(
-                COLLECTION, embedding_function=SentenceTransformerEmbeddingFunction(model_name=EMBED_MODEL),
+                COLLECTION, embedding_function=ONNXMiniLM_L6_V2(),
                 metadata={"hnsw:space": "cosine"})
         return _collection
 

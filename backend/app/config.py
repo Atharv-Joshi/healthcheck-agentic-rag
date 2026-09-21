@@ -8,7 +8,7 @@ _ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=_ROOT.parent / ".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_ROOT / ".env", extra="ignore")
 
     database_url: str = "postgresql+psycopg2://localhost:5432/healthcheck_qa"
     deepseek_api_key: str = ""
