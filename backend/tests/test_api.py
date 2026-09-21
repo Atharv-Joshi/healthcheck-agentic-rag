@@ -73,3 +73,18 @@ def test_off_topic_flag_is_returned_to_the_client(client, monkeypatch):
 def test_off_topic_defaults_to_false(client, monkeypatch):
     monkeypatch.setattr(main, "ask", lambda db, q: {"answer": "ok", "tool_calls": []})
     assert client.post("/api/ask", json={"question": "hi"}).json()["off_topic"] is False
+
+
+def test_slow_warm_up_does_not_delay_startup(monkeypatch):
+    """Regression: awaiting the embedding warm-up inside lifespan kept the port closed on a slow CPU (Render's
+    port-scan timeout killed the deploy). Startup must return immediately while the warm-up runs in the background."""
+    import time
+
+    started = []
+    monkeypatch.setattr(main.store, "warm_up", lambda: (started.append(1), time.sleep(3)))
+    t = time.perf_counter()
+    with TestClient(main.app):
+        startup = time.perf_counter() - t
+        assert startup < 1.0, f"startup took {startup:.1f}s: warm-up is blocking the port from opening"
+        time.sleep(0.3)
+        assert started, "the warm-up should still run in the background"

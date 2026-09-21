@@ -24,6 +24,10 @@ RUN chmod +x /docker-entrypoint.sh
 # Bake the ONNX embedding model into the image (cached under the app user's ~/.cache/chroma) so cold starts don't download it
 RUN python -c "from chromadb.utils.embedding_functions import ONNXMiniLM_L6_V2; ONNXMiniLM_L6_V2()(['warm up'])"
 
+# Build the vector index NOW (fast build machine, no database needed) instead of at first boot: embedding ~350 chunks
+# on a small free-tier CPU delayed the web server past the platform's port-scan timeout.
+RUN python -m scripts.ingest_docs
+
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 CMD ["python", "-m", "scripts.healthcheck"]
 ENTRYPOINT ["/docker-entrypoint.sh"]

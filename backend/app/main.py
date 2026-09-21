@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -23,11 +24,18 @@ log = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    try:
-        store.warm_up()  # first user shouldn't pay for loading the embedding model
-    except Exception:
-        log.exception("vector store warm-up failed; docs search will retry lazily")
+    """Warm the embedding model in the background. uvicorn binds the port only AFTER lifespan startup completes,
+    so awaiting the warm-up here would keep the port closed (a free-tier CPU took minutes, past Render's port-scan
+    timeout). Requests that arrive first simply wait on the store's lock."""
+    async def warm() -> None:
+        try:
+            await asyncio.to_thread(store.warm_up)
+        except Exception:
+            log.exception("vector store warm-up failed; docs search will retry lazily")
+
+    task = asyncio.create_task(warm())  # keep a reference so it isn't garbage-collected mid-run
     yield
+    task.cancel()
 
 
 app = FastAPI(title="Healthcheck Q&A", lifespan=lifespan)

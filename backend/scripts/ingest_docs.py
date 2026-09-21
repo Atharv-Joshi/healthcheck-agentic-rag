@@ -8,14 +8,12 @@ import time
 from pathlib import Path
 
 import httpx
-from sqlalchemy import select
-
-from app.db.database import SessionLocal
-from app.db.models import Check
 from app.config import get_settings
 from app.rag import store
 from app.rag.chunking import chunk_markdown
 from app.rag.store import COLLECTION, get_collection
+
+from .catalog import CHECKS
 
 BASE = "https://www.contentstack.com/docs/"
 EMBED_BATCH = 8
@@ -78,6 +76,7 @@ def fetch(path: str, refresh: bool) -> dict | None:
         _, front, body = body.split("---", 2)
         m = re.search(r'^title:\s*"?(.+?)"?\s*$', front, re.M)
         title = m.group(1) if m else path
+    print("downloaded", path)
     page = {"path": path, "url": BASE + path, "title": title, "text": body.strip()}
     CACHE.mkdir(parents=True, exist_ok=True)
     f.write_text(json.dumps(page))
@@ -96,15 +95,14 @@ def main() -> None:
             metas.append({"source": source, "title": title, "category": category})
 
     for path, category in PAGES.items():
-        print("fetching", path)
         page = fetch(path, refresh)
         if page:
             add(page["text"], page["url"], page["title"], category)
 
-    with SessionLocal() as db:
-        for c in db.scalars(select(Check)):
-            add(f"{c.name}. {c.description} Recommendation: {c.recommendation_text}",
-                f"healthcheck-check:{c.name}", c.name, c.category)
+    # check descriptions/recommendations come from the same catalog the seed loads into Postgres, so the index
+    # can be built at image-build time with no database available
+    for category, name, description, recommendation, *_ in CHECKS:
+        add(f"{name}. {description} Recommendation: {recommendation}", f"healthcheck-check:{name}", name, category)
 
     import chromadb
     client = chromadb.PersistentClient(path=str(get_settings().chroma_dir))
