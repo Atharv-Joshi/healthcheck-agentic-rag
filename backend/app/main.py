@@ -2,7 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 import openai
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -58,7 +58,12 @@ def health():
     return {"status": "ok"}
 
 
-@app.post("/ask", response_model=AskResponse)
+# All API routes live under /api, in dev and in production. In production the built React app is mounted at "/",
+# and a static mount only accepts GET, so an unprefixed POST /ask from the browser would be caught by it (405).
+api = APIRouter(prefix="/api")
+
+
+@api.post("/ask", response_model=AskResponse)
 @limiter.limit(settings.rate_limit)
 def ask_endpoint(request: Request, req: AskRequest, db: Session = Depends(get_db)):
     try:
@@ -69,6 +74,13 @@ def ask_endpoint(request: Request, req: AskRequest, db: Session = Depends(get_db
         raise HTTPException(502, f"LLM client error: {e}")
 
 
-# In the container the built React app is served by FastAPI itself (same origin, no CORS).
+app.include_router(api)
+
+
+def mount_frontend(target: FastAPI, dist_dir) -> None:
+    """Serve the built React app from "/" (same origin as the API, so no CORS). Must be mounted LAST."""
+    target.mount("/", StaticFiles(directory=dist_dir, html=True), name="frontend")
+
+
 if settings.frontend_dist.is_dir():
-    app.mount("/", StaticFiles(directory=settings.frontend_dist, html=True), name="frontend")
+    mount_frontend(app, settings.frontend_dist)

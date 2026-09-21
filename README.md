@@ -63,7 +63,7 @@ cd backend
 ../venv/bin/python -m scripts.seed          # mock data (seeded RNG; --force to replace existing data)
 ../venv/bin/python -m scripts.ingest_docs   # docs + checks -> Chroma
 ../venv/bin/uvicorn app.main:app --reload
-# other terminal: cd frontend && npm install && npm run dev   (proxies /api to :8000)
+# other terminal: cd frontend && npm install && npm run dev   (proxies /api to :8000; the API lives under /api everywhere)
 ```
 
 Or with Docker: `DEEPSEEK_API_KEY=... docker compose up --build` → http://localhost:8000
