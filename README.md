@@ -28,6 +28,15 @@ One agent, two retrieval paths, and the LLM decides which to use (or both):
   recommendations, chunked (~1000 chars, overlap) and embedded locally with `all-MiniLM-L6-v2` on ONNX Runtime (Chroma's built-in embedder: no torch, small image, low RAM).
 - The UI shows which tools answered each question (blue = SQL, violet = docs).
 
+## Scope guard
+
+The assistant only answers questions about Contentstack and the audit report. To decline anything else, the model
+must call an `out_of_scope` tool; the agent loop then ends immediately with a **fixed message** (no second LLM
+call, so the model can't drift into answering), and the UI shows it as an "off topic" bubble. Greetings and
+"what can you do?" still get a short reply. The decision to decline is the model's judgement, so it is measured
+by the eval (off-topic questions, prompt-injection attempts, and in-scope controls that must never be declined)
+rather than assumed.
+
 ## Agentic RAG: the agent supervises its own retrieval
 
 Beyond routing between SQL and docs, a supervision layer (`backend/app/tools/supervisor.py`) sits between the
@@ -94,6 +103,6 @@ frontend/            React + Tailwind chat UI
 
 - Single-shot Q&A: no conversation memory yet.
 - Failed entities are stored as a sample (max 25 per check); `entity_count` holds the true total.
-- Routing eval (`scripts/eval_routing.py`) exists but hasn't been run against a live model yet.
+- The routing eval (`scripts/eval_routing.py`, 30 cases) passes on `deepseek-chat`, but it was written alongside the prompt, so it is a regression check, not an independent benchmark. The retry path fired live only on clearly off-corpus queries; similarity scores can't separate "adjacent topic" from "answers the question" (the optional citation check targets that gap).
 - Tool results are plain dicts, not typed models.
 - The planned LangChain refactor is not done; the raw loop is intentional so the mechanics are explicit.

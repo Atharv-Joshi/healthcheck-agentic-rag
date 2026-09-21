@@ -104,3 +104,26 @@ def test_verification_is_off_by_default(db, monkeypatch):
     c, _ = client([Msg(content=None, tool_calls=[tool_call("search_docs", '{"query": "q"}')]),
                    Msg(content="Answer.", tool_calls=None)])
     assert ask(db, "q?", c, complete=complete)["verification"] is None
+
+
+# ---- scope guard: off-topic questions get a fixed refusal ----
+def test_out_of_scope_tool_ends_the_run_with_the_fixed_message_and_no_second_llm_call(db):
+    from app.prompts import OFF_TOPIC_MESSAGE
+    c, seen = client([Msg(content=None, tool_calls=[tool_call("out_of_scope", '{"reason": "history"}')]),
+                      Msg(content="World War 2 was...", tool_calls=None)])  # must never be reached
+    r = ask(db, "What is ww2", c)
+    assert r["answer"] == OFF_TOPIC_MESSAGE and r["off_topic"] is True
+    assert [t["name"] for t in r["tool_calls"]] == ["out_of_scope"]
+    assert len(seen) == 1  # the model's own answer is never requested, so it can't leak an off-topic reply
+
+
+def test_in_scope_answers_are_not_flagged_off_topic(db):
+    c, _ = client([Msg(content="Hello!", tool_calls=None)])
+    assert ask(db, "hi", c)["off_topic"] is False
+
+
+def test_out_of_scope_wins_even_if_the_model_also_asks_for_data(db):
+    c, _ = client([Msg(content=None, tool_calls=[tool_call("list_stacks", "{}", id="a"),
+                                                  tool_call("out_of_scope", "{}", id="b")]),
+                   Msg(content="x", tool_calls=None)])
+    assert ask(db, "mixed", c)["off_topic"] is True

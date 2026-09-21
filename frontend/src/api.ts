@@ -12,6 +12,7 @@ export type Answer = {
   tool_calls: ToolCall[]
   retries: Retry[]
   verification: Verification | null
+  off_topic?: boolean
 }
 
 const TIMEOUT_MS = 60_000

@@ -62,3 +62,14 @@ def test_ui_mounted_at_root_does_not_shadow_the_api(tmp_path, monkeypatch):
 
 def test_health_stays_at_the_root_for_platform_health_checks(client):
     assert client.get("/health").status_code == 200
+
+
+def test_off_topic_flag_is_returned_to_the_client(client, monkeypatch):
+    monkeypatch.setattr(main, "ask", lambda db, q: {"answer": "declined", "tool_calls": [], "off_topic": True})
+    body = client.post("/api/ask", json={"question": "what is ww2"}).json()
+    assert body["off_topic"] is True and body["answer"] == "declined"
+
+
+def test_off_topic_defaults_to_false(client, monkeypatch):
+    monkeypatch.setattr(main, "ask", lambda db, q: {"answer": "ok", "tool_calls": []})
+    assert client.post("/api/ask", json={"question": "hi"}).json()["off_topic"] is False

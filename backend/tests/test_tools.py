@@ -69,3 +69,8 @@ def test_unexpected_exception_is_contained_and_session_recovers(db, monkeypatch)
         raise RuntimeError("db exploded")
     monkeypatch.setitem(__import__("app.tools.registry", fromlist=["_DISPATCH"])._DISPATCH, "list_stacks", boom)
     assert run(db, "list_stacks")["error"] == "Internal error while running this tool."
+
+
+def test_out_of_scope_is_a_registered_tool(db):
+    assert "out_of_scope" in {s["function"]["name"] for s in TOOL_SCHEMAS}
+    assert run(db, "out_of_scope", reason="history")["off_topic"] is True

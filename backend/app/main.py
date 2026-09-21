@@ -51,6 +51,7 @@ class AskResponse(BaseModel):
     tool_calls: list[dict]
     retries: list[dict] = []           # supervised retries triggered while answering
     verification: dict | None = None   # citation check result (when VERIFY_ANSWERS=true)
+    off_topic: bool = False            # True when the question was declined as out of scope
 
 
 @app.get("/health")
