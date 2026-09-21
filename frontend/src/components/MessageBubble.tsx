@@ -11,6 +11,7 @@ export type Message =
       toolCalls: ToolCall[]
       retries?: Retry[]
       verification?: Verification | null
+      offTopic?: boolean
       error?: boolean
     }
 
@@ -26,12 +27,21 @@ export function MessageBubble({ message }: { message: Message }) {
     <div className="max-w-[90%] space-y-2">
       <div
         className={`rounded-2xl px-4 py-2 text-sm ${
-          message.error ? 'bg-red-50 text-red-800' : 'prose prose-sm max-w-none bg-slate-100 text-slate-900'
+          message.error
+            ? 'bg-red-50 text-red-800'
+            : message.offTopic
+              ? 'prose prose-sm max-w-none border border-amber-200 bg-amber-50 text-slate-900'
+              : 'prose prose-sm max-w-none bg-slate-100 text-slate-900'
         }`}
       >
         {message.error ? message.text : <Markdown remarkPlugins={[remarkGfm]}>{message.text}</Markdown>}
       </div>
-      {(message.toolCalls.length > 0 || message.retries?.length || message.verification?.status === 'unsupported') && (
+      {message.offTopic && (
+        <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
+          off topic
+        </span>
+      )}
+      {(!message.offTopic && message.toolCalls.length > 0 || message.retries?.length || message.verification?.status === 'unsupported') && (
         <div className="flex flex-wrap gap-1">
           {message.toolCalls.map((c, i) => (
             <ToolChip key={i} call={c} />

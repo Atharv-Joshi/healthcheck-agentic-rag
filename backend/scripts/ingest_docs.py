@@ -18,6 +18,7 @@ from app.rag.chunking import chunk_markdown
 from app.rag.store import COLLECTION, get_collection
 
 BASE = "https://www.contentstack.com/docs/"
+EMBED_BATCH = 8
 CACHE = Path(__file__).resolve().parents[1] / "data" / "docs_cache"
 # path -> Healthcheck category the page mostly informs
 PAGES = {
@@ -111,8 +112,9 @@ def main() -> None:
         client.delete_collection(COLLECTION)
     store.reset()
     col = get_collection()
-    for i in range(0, len(ids), 128):
-        col.add(ids=ids[i:i+128], documents=docs[i:i+128], metadatas=metas[i:i+128])
+    # small batches keep peak memory low: ONNX activations scale with batch size, and a 512MB host was OOM-killed at 128
+    for i in range(0, len(ids), EMBED_BATCH):
+        col.add(ids=ids[i:i+EMBED_BATCH], documents=docs[i:i+EMBED_BATCH], metadatas=metas[i:i+EMBED_BATCH])
     print(f"Indexed {len(ids)} chunks from {len(set(m['source'] for m in metas))} sources")
 
 

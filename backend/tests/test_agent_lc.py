@@ -87,3 +87,16 @@ def test_langchain_agent_gets_the_same_retrieval_supervision(db, monkeypatch):
         complete=completer("weak q", "better q"))
     assert [e["kind"] for e in r["retries"]] == ["vector_retry"] and r["answer"] == "Because of X."
     assert r["verification"] is None
+
+
+def test_out_of_scope_returns_the_fixed_refusal_without_another_model_call(db):
+    """return_direct ends the run after the tool. The fake has only ONE scripted message: if the agent asked the
+    model again, the exhausted iterator would raise, so passing proves there was no second call."""
+    from app.prompts import OFF_TOPIC_MESSAGE
+    r = ask(db, "What is ww2", FakeModel(messages=iter([call("out_of_scope", {"reason": "history"})])))
+    assert r["answer"] == OFF_TOPIC_MESSAGE and r["off_topic"] is True
+    assert [t["name"] for t in r["tool_calls"]] == ["out_of_scope"]
+
+
+def test_in_scope_answers_are_not_flagged_off_topic(db):
+    assert ask(db, "hi", FakeModel(messages=iter([AIMessage(content="Hello!")])))["off_topic"] is False

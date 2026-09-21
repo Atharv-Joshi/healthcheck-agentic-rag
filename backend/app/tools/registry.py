@@ -41,6 +41,10 @@ TOOL_SCHEMAS = [
     _fn("get_failed_entities", "Sample of specific entities (names, types, uids) that failed one check. Paginated via offset.",
         {"stack_name": _STACK, "check_name": {"type": "string"}, "limit": {"type": "integer"}, "offset": {"type": "integer"}},
         ["stack_name", "check_name"]),
+    _fn("out_of_scope", "Call this, and nothing else, when the question is not about Contentstack or the Healthcheck "
+        "audit report (general knowledge, history, entertainment, unrelated coding, personal advice, etc.). "
+        "The user is shown a fixed message; do not answer the question.",
+        {"reason": {"type": "string", "description": "A few words on why it is off topic."}}, []),
     _fn("search_docs", "Semantic search over Contentstack documentation and check explanations. Use for conceptual questions: "
         "why something matters, how to fix it, what a feature is, best practices. NOT for counts, statuses or lists from the report.",
         {"query": {"type": "string", "description": "Self-contained search query, rephrased with the key concept names."},
@@ -61,6 +65,7 @@ _DISPATCH = {
     "list_checks_by_status": queries.list_checks_by_status,
     "list_actions_required": queries.list_actions_required, "get_failed_entities": queries.get_failed_entities,
     "search_docs": _search_docs,
+    "out_of_scope": lambda _db, reason="": {"off_topic": True, "reason": reason},
 }
 
 

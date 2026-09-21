@@ -3,7 +3,7 @@ from openai import OpenAI, OpenAIError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.prompts import SYSTEM_PROMPT
+from app.prompts import OFF_TOPIC_MESSAGE, SYSTEM_PROMPT
 from app.rag.reformulate import Completer, openai_completer
 from app.rag.verify import verify_answer
 from app.tools.registry import TOOL_SCHEMAS
@@ -38,6 +38,9 @@ def ask(db: Session, question: str, client: OpenAI | None = None, complete: Comp
 
         messages.append(msg.model_dump(exclude_none=True))
         for tc in msg.tool_calls:
+            if tc.function.name == "out_of_scope":  # end the run with the fixed message; no second LLM call
+                trace.append({"name": tc.function.name, "arguments": tc.function.arguments})
+                return finish(ctx, OFF_TOPIC_MESSAGE, trace, verify=False, off_topic=True)
             result = supervised_call(ctx, tc.function.name, tc.function.arguments)
             trace.append({"name": tc.function.name, "arguments": tc.function.arguments})
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
@@ -45,9 +48,10 @@ def ask(db: Session, question: str, client: OpenAI | None = None, complete: Comp
     return finish(ctx, "I couldn't finish answering within the tool-call limit.", trace, verify=False)
 
 
-def finish(ctx: ToolContext, answer: str, trace: list[dict], verify: bool = True) -> dict:
+def finish(ctx: ToolContext, answer: str, trace: list[dict], verify: bool = True, off_topic: bool = False) -> dict:
     """Shared response shape for both agent implementations (optionally with the stretch citation check)."""
     verification = None
     if verify and get_settings().verify_answers and ctx.complete:
         verification = verify_answer(ctx.complete, answer, ctx.snippets)
-    return {"answer": answer, "tool_calls": trace, "retries": ctx.events, "verification": verification}
+    return {"answer": answer, "tool_calls": trace, "retries": ctx.events, "verification": verification,
+            "off_topic": off_topic}

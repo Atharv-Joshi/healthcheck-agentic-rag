@@ -35,6 +35,15 @@ One agent, two retrieval paths, and the LLM decides which to use (or both):
   schemas and dispatcher, so the only difference is orchestration. Switch with `AGENT_IMPL=langchain`;
   `python -m scripts.eval_routing` runs the routing eval against whichever is selected.
 
+## Scope guard
+
+The assistant only answers questions about Contentstack and the audit report. To decline anything else, the model
+must call an `out_of_scope` tool; the agent loop then ends immediately with a **fixed message** (no second LLM
+call, so the model can't drift into answering), and the UI shows it as an "off topic" bubble. Greetings and
+"what can you do?" still get a short reply. The decision to decline is the model's judgement, so it is measured
+by the eval (off-topic questions, prompt-injection attempts, and in-scope controls that must never be declined)
+rather than assumed.
+
 ## Agentic RAG: the agent supervises its own retrieval
 
 Beyond routing between SQL and docs, a supervision layer (`backend/app/tools/supervisor.py`) sits between the
@@ -70,7 +79,7 @@ cd backend
 ../venv/bin/python -m scripts.seed          # mock data (seeded RNG; --force to replace existing data)
 ../venv/bin/python -m scripts.ingest_docs   # docs + checks -> Chroma
 ../venv/bin/uvicorn app.main:app --reload
-# other terminal: cd frontend && npm install && npm run dev   (proxies /api to :8000)
+# other terminal: cd frontend && npm install && npm run dev   (proxies /api to :8000; the API lives under /api everywhere)
 ```
 
 Or with Docker: `DEEPSEEK_API_KEY=... docker compose up --build` → http://localhost:8000
@@ -101,6 +110,6 @@ frontend/            React + Tailwind chat UI
 
 - Single-shot Q&A: no conversation memory yet.
 - Failed entities are stored as a sample (max 25 per check); `entity_count` holds the true total.
-- Routing eval (`scripts/eval_routing.py`) exists but hasn't been run against a live model yet.
+- The routing eval (`scripts/eval_routing.py`, 30 cases) passes on `deepseek-chat`, but it was written alongside the prompt, so it is a regression check, not an independent benchmark. The retry path fired live only on clearly off-corpus queries; similarity scores can't separate "adjacent topic" from "answers the question" (the optional citation check targets that gap).
 - Tool results are plain dicts, not typed models.
 - Neither agent has been compared on live-model routing results yet (waiting on LLM credit).

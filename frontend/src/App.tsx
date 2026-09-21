@@ -25,6 +25,7 @@ export default function App() {
           toolCalls: r.tool_calls,
           retries: r.retries,
           verification: r.verification,
+          offTopic: r.off_topic,
         }])
     } catch (e) {
       setMessages((m) => [...m, { role: 'assistant', text: (e as Error).message, toolCalls: [], error: true }])

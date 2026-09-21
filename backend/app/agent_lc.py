@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.agent import MAX_STEPS, finish
 from app.config import get_settings
-from app.prompts import SYSTEM_PROMPT
+from app.prompts import OFF_TOPIC_MESSAGE, SYSTEM_PROMPT
 from app.rag.reformulate import Completer, openai_completer
 from app.tools.registry import TOOL_SCHEMAS
 from app.tools.supervisor import ToolContext, supervised_call
@@ -39,7 +39,9 @@ def build_tools(ctx: ToolContext) -> list[StructuredTool]:
             return supervised_call(ctx, _name, json.dumps(kwargs))
 
         tools.append(StructuredTool.from_function(
-            func=run, name=fn["name"], description=fn["description"], args_schema=fn["parameters"]))
+            func=run, name=fn["name"], description=fn["description"], args_schema=fn["parameters"],
+            # declining ends the run right after the tool: no further model call that could drift into answering
+            return_direct=fn["name"] == "out_of_scope"))
     return tools
 
 
@@ -76,4 +78,6 @@ def ask(db: Session, question: str, model=None, complete: Completer | None = Non
     messages = state["messages"]
     trace = [{"name": c["name"], "arguments": json.dumps(c["args"])}
              for m in messages if isinstance(m, AIMessage) for c in m.tool_calls]
+    if any(t["name"] == "out_of_scope" for t in trace):  # same fixed refusal as the raw agent
+        return finish(ctx, OFF_TOPIC_MESSAGE, trace, verify=False, off_topic=True)
     return finish(ctx, _text(messages[-1].content).strip() or FALLBACK_ANSWER, trace)
