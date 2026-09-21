@@ -1,6 +1,14 @@
 import { useState } from 'react'
 
-export function ChatInput({ disabled, onSend }: { disabled: boolean; onSend: (text: string) => void }) {
+export function ChatInput({
+  disabled,
+  placeholder,
+  onSend,
+}: {
+  disabled: boolean
+  placeholder: string
+  onSend: (text: string) => void
+}) {
   const [value, setValue] = useState('')
   return (
     <form
@@ -15,7 +23,7 @@ export function ChatInput({ disabled, onSend }: { disabled: boolean; onSend: (te
       <input
         value={value}
         onChange={(e) => setValue(e.target.value)}
-        placeholder="Ask about a stack, a check, or a recommendation…"
+        placeholder={placeholder}
         maxLength={1000}
         className="flex-1 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
       />

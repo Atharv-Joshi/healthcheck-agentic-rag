@@ -1,32 +1,83 @@
-import { useEffect, useRef, useState } from 'react'
-import { askApi } from './api'
-import { ChatInput } from './components/ChatInput'
-import { ExampleQuestions } from './components/ExampleQuestions'
-import { MessageBubble, type Message } from './components/MessageBubble'
+import { useCallback, useEffect, useState } from 'react'
+import { askStack, fetchStacks, type HistoryMessage, type StackCard } from './api'
+import { ChatView } from './components/ChatView'
+import { Dashboard } from './components/Dashboard'
+import type { Message } from './components/MessageBubble'
+import { useStackRoute } from './useStackRoute'
+
+/** What the server remembers about the conversation: earlier turns of THIS stack's chat (errors are not turns). */
+function toHistory(messages: Message[]): HistoryMessage[] {
+  return messages.flatMap<HistoryMessage>((m) => {
+    if (m.role === 'user') return [{ role: 'user', content: m.text }]
+    return m.error ? [] : [{ role: 'assistant', content: m.text }]
+  })
+}
 
 export default function App() {
-  const [messages, setMessages] = useState<Message[]>([])
+  const stackId = useStackRoute()
+  const [stacks, setStacks] = useState<StackCard[] | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  // One conversation per stack, kept while you browse (in memory only; a page reload starts fresh).
+  const [chats, setChats] = useState<Record<number, Message[]>>({})
   const [loading, setLoading] = useState(false)
-  const bottom = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    bottom.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages, loading])
+  const loadStacks = useCallback(() => {
+    setLoadError(null)
+    setStacks(null)
+    fetchStacks()
+      .then(setStacks)
+      .catch((e: Error) => setLoadError(e.message))
+  }, [])
+
+  useEffect(loadStacks, [loadStacks])
+
+  if (stackId === null) return <Dashboard stacks={stacks} error={loadError} onRetry={loadStacks} />
+
+  const stack = stacks?.find((s) => s.id === stackId)
+  if (!stack) {
+    return (
+      <div className="mx-auto max-w-3xl px-4 py-8 text-sm text-slate-600">
+        {loadError ? (
+          <>
+            <p role="alert" className="text-red-700">{loadError}</p>
+            <button onClick={loadStacks} className="mt-2 rounded-md border border-slate-300 px-3 py-1.5">
+              Try again
+            </button>
+          </>
+        ) : stacks ? (
+          <p>That stack doesn’t exist.</p>
+        ) : (
+          <p>Loading…</p>
+        )}
+        <a href="#/" className="mt-4 inline-block text-slate-700 underline">
+          ← All stacks
+        </a>
+      </div>
+    )
+  }
+
+  const messages = chats[stack.id] ?? []
+  const setMessages = (update: (m: Message[]) => Message[]) =>
+    setChats((c) => ({ ...c, [stack.id]: update(c[stack.id] ?? []) }))
 
   async function send(question: string) {
     if (loading) return
+    const history = toHistory(messages) // the turns BEFORE this question
     setMessages((m) => [...m, { role: 'user', text: question }])
     setLoading(true)
     try {
-      const r = await askApi(question)
-      setMessages((m) => [...m, {
+      const r = await askStack(stack!.id, question, history)
+      setMessages((m) => [
+        ...m,
+        {
           role: 'assistant',
           text: r.answer,
           toolCalls: r.tool_calls,
           retries: r.retries,
           verification: r.verification,
-          offTopic: r.off_topic,
-        }])
+          refusal: r.refusal,
+        },
+      ])
     } catch (e) {
       setMessages((m) => [...m, { role: 'assistant', text: (e as Error).message, toolCalls: [], error: true }])
     } finally {
@@ -35,24 +86,13 @@ export default function App() {
   }
 
   return (
-    <div className="mx-auto flex h-screen max-w-3xl flex-col px-4 py-4">
-      <header className="pb-3">
-        <h1 className="text-xl font-semibold text-slate-900">Healthcheck Report Q&amp;A</h1>
-        <p className="text-sm text-slate-500">
-          Ask about a Contentstack Healthcheck audit. Demo runs on synthetic mock data.
-        </p>
-      </header>
-
-      <main role="log" aria-live="polite" aria-label="Conversation" className="flex-1 space-y-4 overflow-y-auto rounded-lg border border-slate-200 bg-white p-4">
-        {messages.length === 0 && <ExampleQuestions onPick={send} />}
-        {messages.map((m, i) => (
-          <MessageBubble key={i} message={m} />
-        ))}
-        {loading && <p className="text-sm text-slate-400">Thinking…</p>}
-        <div ref={bottom} />
-      </main>
-
-      <ChatInput disabled={loading} onSend={send} />
-    </div>
+    <ChatView
+      key={stack.id} // a different stack is a different chat: no state carries over
+      stack={stack}
+      messages={messages}
+      loading={loading}
+      onSend={send}
+      onReset={() => setMessages(() => [])}
+    />
   )
 }

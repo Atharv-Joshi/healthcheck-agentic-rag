@@ -1,8 +1,9 @@
+// Stack-agnostic on purpose: every chat is already locked to one stack, so questions never need to name it.
 const EXAMPLES = [
-  'What are the top 3 actions required for Globex Corporate Site?',
-  'How many checks failed for Initech Support Portal?',
+  'What are the top actions required?',
+  'How many checks failed?',
+  'List the failed Security checks',
   'Why does two-factor authentication matter?',
-  'Is SSO enabled for Acme Retail - Web, and why does it matter?',
 ]
 
 export function ExampleQuestions({ onPick }: { onPick: (q: string) => void }) {

@@ -1,6 +1,6 @@
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { Retry, ToolCall, Verification } from '../api'
+import type { Refusal, Retry, ToolCall, Verification } from '../api'
 import { ToolChip } from './ToolChip'
 
 export type Message =
@@ -11,7 +11,7 @@ export type Message =
       toolCalls: ToolCall[]
       retries?: Retry[]
       verification?: Verification | null
-      offTopic?: boolean
+      refusal?: Refusal | null
       error?: boolean
     }
 
@@ -29,19 +29,19 @@ export function MessageBubble({ message }: { message: Message }) {
         className={`rounded-2xl px-4 py-2 text-sm ${
           message.error
             ? 'bg-red-50 text-red-800'
-            : message.offTopic
+            : message.refusal
               ? 'prose prose-sm max-w-none border border-amber-200 bg-amber-50 text-slate-900'
               : 'prose prose-sm max-w-none bg-slate-100 text-slate-900'
         }`}
       >
         {message.error ? message.text : <Markdown remarkPlugins={[remarkGfm]}>{message.text}</Markdown>}
       </div>
-      {message.offTopic && (
+      {message.refusal && (
         <span className="inline-block rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-          off topic
+          {message.refusal === 'other_stack' ? 'other stack' : 'off topic'}
         </span>
       )}
-      {(!message.offTopic && message.toolCalls.length > 0 || message.retries?.length || message.verification?.status === 'unsupported') && (
+      {(!message.refusal && message.toolCalls.length > 0 || message.retries?.length || message.verification?.status === 'unsupported') && (
         <div className="flex flex-wrap gap-1">
           {message.toolCalls.map((c, i) => (
             <ToolChip key={i} call={c} />

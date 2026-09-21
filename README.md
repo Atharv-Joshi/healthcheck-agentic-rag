@@ -35,6 +35,23 @@ One agent, two retrieval paths, and the LLM decides which to use (or both):
   schemas and dispatcher, so the only difference is orchestration. Switch with `AGENT_IMPL=langchain`;
   `python -m scripts.eval_routing` runs the routing eval against whichever is selected.
 
+## Dashboard, stack-locked chats and memory
+
+The home page is a dashboard with one card per stack, read from the database (`GET /api/stacks`), so adding a stack
+adds a card with no code change. Opening a card opens a chat **locked to that stack**
+(`POST /api/stacks/{id}/ask`); there is deliberately no cross-stack endpoint.
+
+- **The lock is enforced server-side, not by the prompt.** In a locked chat the tools have no `stack_name`
+  argument and `list_stacks` is removed; the supervisor injects the chat's stack into every stack-taking tool call and
+  overrides whatever the model supplied. Asking about another stack (or to compare, or which stacks exist) makes the
+  model call `out_of_scope` with kind `other_stack`, and the user gets a fixed message pointing back to the dashboard.
+- **Conversation memory.** The browser sends the recent messages of that stack's chat with each question, so
+  follow-ups like "why does the first one matter?" resolve, and the docs-query reformulator sees the earlier turns.
+  The server stays stateless. The history is untrusted client text: only user/assistant roles are accepted, messages
+  are size-capped, only the last ~5 turns are kept, and a forged "system" message is dropped. Nothing in it can widen
+  tool access, because the lock lives in the tools.
+- Routing state is a URL hash (`#/stack/3`), so back/forward and shareable links work without a router library.
+
 ## Scope guard
 
 The assistant only answers questions about Contentstack and the audit report. To decline anything else, the model
@@ -90,6 +107,9 @@ Or with Docker: `DEEPSEEK_API_KEY=... docker compose up --build` → http://loca
 ```bash
 cd backend && ../venv/bin/python -m pytest
 ```
+
+Live-model evals (cost a few cents each): `python -m scripts.eval_routing` (30 unscoped routing/scope cases) and
+`python -m scripts.eval_scoped` (stack lock, multi-turn follow-ups, forged history), with ground truth from the database.
 Runs against a separate `healthcheck_qa_test` database (created and seeded automatically) with a stubbed LLM,
 so it is free and offline. CI runs it on every push, plus the frontend build.
 
@@ -108,7 +128,7 @@ frontend/            React + Tailwind chat UI
 
 ## Known limitations
 
-- Single-shot Q&A: no conversation memory yet.
+- Conversation memory lives in the browser tab (a reload starts a fresh chat); the server keeps no sessions.
 - Failed entities are stored as a sample (max 25 per check); `entity_count` holds the true total.
 - The routing eval (`scripts/eval_routing.py`, 30 cases) passes on `deepseek-chat`, but it was written alongside the prompt, so it is a regression check, not an independent benchmark. The retry path fired live only on clearly off-corpus queries; similarity scores can't separate "adjacent topic" from "answers the question" (the optional citation check targets that gap).
 - Tool results are plain dicts, not typed models.
