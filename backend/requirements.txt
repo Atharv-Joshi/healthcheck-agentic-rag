@@ -11,3 +11,7 @@ pytest==9.1.1
 python-dotenv==1.2.3
 slowapi==0.1.10
 uvicorn==0.53.0
+langchain==1.4.2
+langchain-core==1.6.3
+langchain-openai==1.6.2
+langgraph==1.2.11

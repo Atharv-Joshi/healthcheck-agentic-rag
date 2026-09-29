@@ -12,7 +12,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
-from app.agent import ask
+from app.agent import ask as ask_raw
 from app.config import get_settings
 from app.stacks import get_stack, list_stack_cards
 from app.db.database import SessionLocal
@@ -45,6 +45,16 @@ app = FastAPI(title="Healthcheck Q&A", lifespan=lifespan)
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+def _select_agent():
+    """AGENT_IMPL=raw (hand-written loop, default) | langchain. LangChain is only imported when selected."""
+    if settings.agent_impl == "langchain":
+        from app.agent_lc import ask as ask_langchain
+        return ask_langchain
+    return ask_raw
+
+
+ask = _select_agent()
 
 
 def get_db():

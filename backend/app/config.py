@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     llm_timeout_s: float = 30
     llm_max_output_tokens: int = 800
 
+    agent_impl: str = "raw"  # raw | langchain
     rate_limit: str = "10/minute"
     log_level: str = "INFO"
 

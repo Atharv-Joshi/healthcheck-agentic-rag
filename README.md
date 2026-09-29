@@ -32,6 +32,13 @@ One agent, two retrieval paths, and the LLM decides which to use (or both):
   recommendations, chunked (~1000 chars, overlap) and embedded locally with `all-MiniLM-L6-v2` on ONNX Runtime (Chroma's built-in embedder: no torch, small image, low RAM).
 - The UI shows which tools answered each question (blue = SQL, violet = docs).
 
+## Two agent implementations
+
+- `agent.py` — the hand-written tool-calling loop (default). ~30 lines; every message and tool result is explicit.
+- `agent_lc.py` — the same agent on LangChain (`create_agent`, a LangGraph graph). It wraps the *same* tool
+  schemas and dispatcher, so the only difference is orchestration. Switch with `AGENT_IMPL=langchain`;
+  `python -m scripts.eval_routing` runs the routing eval against whichever is selected.
+
 ## Dashboard, stack-locked chats and memory
 
 The home page is a dashboard with one card per stack, read from the database (`GET /api/stacks`), so adding a stack
@@ -129,4 +136,4 @@ frontend/            React + Tailwind chat UI
 - Failed entities are stored as a sample (max 25 per check); `entity_count` holds the true total.
 - The routing eval (`scripts/eval_routing.py`, 30 cases) passes on `deepseek-chat`, but it was written alongside the prompt, so it is a regression check, not an independent benchmark. The retry path fired live only on clearly off-corpus queries; similarity scores can't separate "adjacent topic" from "answers the question" (the optional citation check targets that gap).
 - Tool results are plain dicts, not typed models.
-- The planned LangChain refactor is not done; the raw loop is intentional so the mechanics are explicit.
+- Neither agent has been compared on live-model routing results yet (waiting on LLM credit).

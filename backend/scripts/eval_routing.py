@@ -1,8 +1,8 @@
-"""Routing eval: does the agent pick the right retrieval path? Usage: python -m scripts.eval_routing
+"""Routing eval: does the agent pick the right retrieval path? Usage: [AGENT_IMPL=langchain] python -m scripts.eval_routing
 Each case lists tools that MUST be called and tools that must NOT be called."""
 import sys
 
-from app.agent import ask
+from app.main import ask  # honors AGENT_IMPL (raw | langchain)
 from app.db.database import SessionLocal
 
 SQL = {"list_stacks", "list_checks", "get_stack_summary", "get_check_status",

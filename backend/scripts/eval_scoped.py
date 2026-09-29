@@ -1,9 +1,9 @@
-"""Eval for stack-locked, multi-turn chats (live LLM). Usage: python -m scripts.eval_scoped
+"""Eval for stack-locked, multi-turn chats (live LLM). Usage: [AGENT_IMPL=langchain] python -m scripts.eval_scoped
 Every check is deterministic: which tools ran, whether it was declined, and whether the answer names the wrong stack."""
 import json
 import sys
 
-from app.agent import ask
+from app.main import ask  # honors AGENT_IMPL (raw | langchain)
 from app.db.database import SessionLocal
 from app.db.models import Stack
 from app.tools import queries
